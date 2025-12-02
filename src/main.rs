@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use open_proxy::{
     database::TodoDatabase,
@@ -89,7 +90,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let db = TodoDatabase::new(&cli.database).await?;
@@ -218,12 +219,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn parse_proxy_type(s: &str) -> Result<ProxyType, Box<dyn std::error::Error>> {
+fn parse_proxy_type(s: &str) -> Result<ProxyType> {
     match s.to_lowercase().as_str() {
         "http" => Ok(ProxyType::Http),
         "https" => Ok(ProxyType::Https),
         "socks4" => Ok(ProxyType::Socks4),
         "socks5" => Ok(ProxyType::Socks5),
-        _ => Err(format!("Invalid proxy type: {}. Use: http, https, socks4, socks5", s).into()),
+        _ => Err(anyhow!(
+            "Invalid proxy type: {}. Use: http, https, socks4, socks5",
+            s
+        )),
     }
 }

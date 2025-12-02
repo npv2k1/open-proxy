@@ -113,13 +113,19 @@ impl ProxyChecker {
     /// Check multiple proxies concurrently
     pub async fn check_proxies(&self, proxies: Vec<Proxy>) -> Vec<ProxyCheckResult> {
         let semaphore = Arc::new(Semaphore::new(self.config.concurrency));
-        
+
         let results = stream::iter(proxies)
             .map(|proxy| {
                 let sem = Arc::clone(&semaphore);
                 let checker = self.clone();
                 async move {
-                    let _permit = sem.acquire().await.unwrap();
+                    // Semaphore acquire only fails if the semaphore is closed,
+                    // which won't happen here since we own the Arc and keep it alive
+                    // for the duration of the check operation.
+                    let _permit = sem
+                        .acquire()
+                        .await
+                        .expect("Semaphore closed unexpectedly");
                     checker.check_proxy(&proxy).await
                 }
             })

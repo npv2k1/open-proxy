@@ -2,16 +2,27 @@
 
 use crate::proxy::models::{Proxy, ProxyType};
 use crate::Result;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+
+// Pre-compiled regex patterns for better performance
+static URL_FORMAT_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(https?|socks[45])://(?:([^:]+):([^@]+)@)?([^:]+):(\d+)/?$")
+        .expect("Invalid URL format regex")
+});
+
+static AUTH_AT_FORMAT_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^([^:]+):([^@]+)@([^:]+):(\d+)$").expect("Invalid auth format regex")
+});
 
 /// Proxy parser for parsing proxies from strings and files
 pub struct ProxyParser;
 
 impl ProxyParser {
     /// Parse a single proxy line
-    /// 
+    ///
     /// Supports formats:
     /// - IP:PORT
     /// - IP:PORT:USER:PASS
@@ -44,12 +55,8 @@ impl ProxyParser {
 
     /// Parse URL format proxy (e.g., http://ip:port or socks5://user:pass@ip:port)
     fn parse_url_format(line: &str) -> Option<Proxy> {
-        let re = Regex::new(
-            r"^(https?|socks[45])://(?:([^:]+):([^@]+)@)?([^:]+):(\d+)/?$"
-        ).ok()?;
+        let caps = URL_FORMAT_REGEX.captures(line)?;
 
-        let caps = re.captures(line)?;
-        
         let proxy_type = match &caps[1] {
             "http" => ProxyType::Http,
             "https" => ProxyType::Https,
@@ -62,30 +69,33 @@ impl ProxyParser {
         let port: u16 = caps[5].parse().ok()?;
 
         match (caps.get(2), caps.get(3)) {
-            (Some(user), Some(pass)) => {
-                Some(Proxy::with_auth(
-                    host,
-                    port,
-                    proxy_type,
-                    user.as_str().to_string(),
-                    pass.as_str().to_string(),
-                ))
-            }
+            (Some(user), Some(pass)) => Some(Proxy::with_auth(
+                host,
+                port,
+                proxy_type,
+                user.as_str().to_string(),
+                pass.as_str().to_string(),
+            )),
             _ => Some(Proxy::new(host, port, proxy_type)),
         }
     }
 
     /// Parse user:pass@ip:port format
     fn parse_auth_at_format(line: &str, default_type: ProxyType) -> Option<Proxy> {
-        let re = Regex::new(r"^([^:]+):([^@]+)@([^:]+):(\d+)$").ok()?;
-        let caps = re.captures(line)?;
+        let caps = AUTH_AT_FORMAT_REGEX.captures(line)?;
 
         let username = caps[1].to_string();
         let password = caps[2].to_string();
         let host = caps[3].to_string();
         let port: u16 = caps[4].parse().ok()?;
 
-        Some(Proxy::with_auth(host, port, default_type, username, password))
+        Some(Proxy::with_auth(
+            host,
+            port,
+            default_type,
+            username,
+            password,
+        ))
     }
 
     /// Parse ip:port or ip:port:user:pass format
