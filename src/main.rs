@@ -260,13 +260,17 @@ async fn main() -> Result<()> {
             if common_sources {
                 println!("Crawling from common proxy sources...");
                 let sources = ProxyCrawler::get_common_sources();
-                match crawler.crawl_sources(&sources).await {
-                    Ok(proxies) => {
-                        println!("Found {} proxies from common sources", proxies.len());
-                        all_proxies.extend(proxies);
-                    }
-                    Err(e) => {
-                        eprintln!("Error crawling common sources: {}", e);
+                let results = crawler.crawl_sources_with_results(&sources).await;
+                for result in results {
+                    if result.is_success() {
+                        println!(
+                            "Found {} proxies from {}",
+                            result.proxies.len(),
+                            result.source
+                        );
+                        all_proxies.extend(result.proxies);
+                    } else if let Some(error) = result.error {
+                        eprintln!("Error crawling {}: {}", result.source, error);
                     }
                 }
             }

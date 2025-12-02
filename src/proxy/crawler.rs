@@ -25,6 +25,42 @@ static IP_PORT_REGEX: Lazy<Regex> = Lazy::new(|| {
         .expect("Invalid IP:PORT regex")
 });
 
+/// Result of crawling a single source
+#[derive(Debug, Clone)]
+pub struct CrawlResult {
+    /// The source that was crawled
+    pub source: String,
+    /// Proxies extracted from the source
+    pub proxies: Vec<Proxy>,
+    /// Error message if crawling failed
+    pub error: Option<String>,
+}
+
+impl CrawlResult {
+    /// Create a successful crawl result
+    pub fn success(source: String, proxies: Vec<Proxy>) -> Self {
+        Self {
+            source,
+            proxies,
+            error: None,
+        }
+    }
+
+    /// Create a failed crawl result
+    pub fn failure(source: String, error: String) -> Self {
+        Self {
+            source,
+            proxies: Vec::new(),
+            error: Some(error),
+        }
+    }
+
+    /// Check if the crawl was successful
+    pub fn is_success(&self) -> bool {
+        self.error.is_none()
+    }
+}
+
 /// Configuration for proxy crawler
 #[derive(Debug, Clone)]
 pub struct CrawlerConfig {
@@ -128,22 +164,19 @@ impl ProxyCrawler {
         Ok(self.parse_proxies_from_text(&content, proxy_type))
     }
 
-    /// Fetch and parse proxies from multiple URLs
-    pub async fn crawl_urls(&self, urls: &[(&str, ProxyType)]) -> Result<Vec<Proxy>> {
-        let mut all_proxies = Vec::new();
+    /// Fetch and parse proxies from multiple URLs, returning results for each
+    pub async fn crawl_urls_with_results(&self, urls: &[(&str, ProxyType)]) -> Vec<CrawlResult> {
+        let mut results = Vec::new();
 
         for (url, proxy_type) in urls {
-            match self.crawl_url(url, proxy_type.clone()).await {
-                Ok(proxies) => {
-                    all_proxies.extend(proxies);
-                }
-                Err(e) => {
-                    eprintln!("Error crawling {}: {}", url, e);
-                }
-            }
+            let result = match self.crawl_url(url, proxy_type.clone()).await {
+                Ok(proxies) => CrawlResult::success(url.to_string(), proxies),
+                Err(e) => CrawlResult::failure(url.to_string(), e.to_string()),
+            };
+            results.push(result);
         }
 
-        Ok(all_proxies)
+        results
     }
 
     /// Fetch and parse proxies from a ProxySource
@@ -151,23 +184,19 @@ impl ProxyCrawler {
         self.crawl_url(&source.url, source.proxy_type.clone()).await
     }
 
-    /// Fetch and parse proxies from multiple ProxySources
-    pub async fn crawl_sources(&self, sources: &[ProxySource]) -> Result<Vec<Proxy>> {
-        let mut all_proxies = Vec::new();
+    /// Fetch and parse proxies from multiple ProxySources, returning results for each
+    pub async fn crawl_sources_with_results(&self, sources: &[ProxySource]) -> Vec<CrawlResult> {
+        let mut results = Vec::new();
 
         for source in sources {
-            match self.crawl_source(source).await {
-                Ok(proxies) => {
-                    println!("Crawled {} proxies from {}", proxies.len(), source.name);
-                    all_proxies.extend(proxies);
-                }
-                Err(e) => {
-                    eprintln!("Error crawling {}: {}", source.name, e);
-                }
-            }
+            let result = match self.crawl_source(source).await {
+                Ok(proxies) => CrawlResult::success(source.name.clone(), proxies),
+                Err(e) => CrawlResult::failure(source.name.clone(), e.to_string()),
+            };
+            results.push(result);
         }
 
-        Ok(all_proxies)
+        results
     }
 
     /// Parse proxies from raw text content
@@ -294,6 +323,29 @@ mod tests {
         assert_eq!(source.name, "test-source");
         assert_eq!(source.url, "https://example.com/proxies.txt");
         assert_eq!(source.proxy_type, ProxyType::Http);
+    }
+
+    #[test]
+    fn test_crawl_result_success() {
+        let proxies = vec![
+            Proxy::new("192.168.1.1".to_string(), 8080, ProxyType::Http),
+            Proxy::new("192.168.1.2".to_string(), 3128, ProxyType::Http),
+        ];
+        let result = CrawlResult::success("test-source".to_string(), proxies);
+        assert!(result.is_success());
+        assert_eq!(result.source, "test-source");
+        assert_eq!(result.proxies.len(), 2);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_crawl_result_failure() {
+        let result =
+            CrawlResult::failure("test-source".to_string(), "Connection failed".to_string());
+        assert!(!result.is_success());
+        assert_eq!(result.source, "test-source");
+        assert!(result.proxies.is_empty());
+        assert_eq!(result.error, Some("Connection failed".to_string()));
     }
 
     #[test]

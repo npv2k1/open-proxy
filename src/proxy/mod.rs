@@ -12,6 +12,6 @@ pub mod models;
 pub mod parser;
 
 pub use checker::{CheckerConfig, ProxyChecker};
-pub use crawler::{CrawlerConfig, ProxyCrawler, ProxySource};
+pub use crawler::{CrawlResult, CrawlerConfig, ProxyCrawler, ProxySource};
 pub use models::{Proxy, ProxyAuth, ProxyCheckResult, ProxyCheckStatus, ProxyType};
 pub use parser::ProxyParser;
