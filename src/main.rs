@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use open_proxy::{
     database::TodoDatabase,
     models::Todo,
-    proxy::{CheckerConfig, ProxyChecker, ProxyParser, ProxyType},
+    proxy::{CheckerConfig, CrawlerConfig, ProxyChecker, ProxyCrawler, ProxyParser, ProxyType},
     tui::App,
 };
 use std::path::PathBuf;
@@ -87,6 +87,24 @@ enum Commands {
         #[arg(long, default_value = "http://httpbin.org/ip")]
         test_url: String,
     },
+    /// Crawl proxies from websites
+    Crawl {
+        /// URLs to crawl proxies from (can specify multiple)
+        #[arg(short, long)]
+        url: Vec<String>,
+        /// Output file for crawled proxies
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Proxy type (http, https, socks4, socks5)
+        #[arg(short = 't', long, default_value = "http")]
+        proxy_type: String,
+        /// Timeout in seconds for HTTP requests
+        #[arg(long, default_value = "30")]
+        timeout: u64,
+        /// Use common free proxy sources
+        #[arg(long)]
+        common_sources: bool,
+    },
 }
 
 #[tokio::main]
@@ -151,9 +169,9 @@ async fn main() -> Result<()> {
         }) => {
             let ptype = parse_proxy_type(&proxy_type)?;
             let proxies = ProxyParser::parse_file(&input, ptype)?;
-            
+
             println!("Parsed {} proxies from {:?}", proxies.len(), input);
-            
+
             if let Some(output_path) = output {
                 ProxyParser::save_to_file(&proxies, &output_path, true)?;
                 println!("Saved parsed proxies to {:?}", output_path);
@@ -174,7 +192,7 @@ async fn main() -> Result<()> {
         }) => {
             let ptype = parse_proxy_type(&proxy_type)?;
             let proxies = ProxyParser::parse_file(&input, ptype)?;
-            
+
             println!("Loaded {} proxies from {:?}", proxies.len(), input);
             println!("Checking with {} threads, timeout: {}s", threads, timeout);
             println!("Test URL: {}", test_url);
@@ -188,13 +206,21 @@ async fn main() -> Result<()> {
             let checker = ProxyChecker::with_config(config);
             let (good_results, bad_results) = checker.check_and_separate(proxies).await;
 
-            println!("Results: {} good, {} bad", good_results.len(), bad_results.len());
+            println!(
+                "Results: {} good, {} bad",
+                good_results.len(),
+                bad_results.len()
+            );
 
             // Save good proxies
             if let Some(good_path) = good {
                 let good_proxies: Vec<_> = good_results.iter().map(|r| r.proxy.clone()).collect();
                 ProxyParser::save_to_file(&good_proxies, &good_path, true)?;
-                println!("Saved {} good proxies to {:?}", good_proxies.len(), good_path);
+                println!(
+                    "Saved {} good proxies to {:?}",
+                    good_proxies.len(),
+                    good_path
+                );
             }
 
             // Save bad proxies
@@ -211,6 +237,70 @@ async fn main() -> Result<()> {
                     if let Some(time) = result.response_time_ms {
                         println!("  {} ({}ms)", result.proxy.to_full_string(), time);
                     }
+                }
+            }
+        }
+        Some(Commands::Crawl {
+            url,
+            output,
+            proxy_type,
+            timeout,
+            common_sources,
+        }) => {
+            let ptype = parse_proxy_type(&proxy_type)?;
+            let config = CrawlerConfig::new()
+                .with_timeout(Duration::from_secs(timeout))
+                .with_proxy_type(ptype.clone());
+
+            let crawler = ProxyCrawler::with_config(config)?;
+
+            let mut all_proxies = Vec::new();
+
+            // Crawl from common sources if requested
+            if common_sources {
+                println!("Crawling from common proxy sources...");
+                let sources = ProxyCrawler::get_common_sources();
+                match crawler.crawl_sources(&sources).await {
+                    Ok(proxies) => {
+                        println!("Found {} proxies from common sources", proxies.len());
+                        all_proxies.extend(proxies);
+                    }
+                    Err(e) => {
+                        eprintln!("Error crawling common sources: {}", e);
+                    }
+                }
+            }
+
+            // Crawl from user-provided URLs
+            for crawl_url in &url {
+                println!("Crawling: {}", crawl_url);
+                match crawler.crawl_url(crawl_url, ptype.clone()).await {
+                    Ok(proxies) => {
+                        println!("Found {} proxies from {}", proxies.len(), crawl_url);
+                        all_proxies.extend(proxies);
+                    }
+                    Err(e) => {
+                        eprintln!("Error crawling {}: {}", crawl_url, e);
+                    }
+                }
+            }
+
+            // Deduplicate proxies
+            all_proxies.sort_by(|a, b| {
+                let key_a = format!("{}:{}", a.host, a.port);
+                let key_b = format!("{}:{}", b.host, b.port);
+                key_a.cmp(&key_b)
+            });
+            all_proxies.dedup_by(|a, b| a.host == b.host && a.port == b.port);
+
+            println!("\nTotal unique proxies: {}", all_proxies.len());
+
+            if let Some(output_path) = output {
+                ProxyParser::save_to_file(&all_proxies, &output_path, true)?;
+                println!("Saved proxies to {:?}", output_path);
+            } else {
+                for proxy in &all_proxies {
+                    println!("{}", proxy.to_full_string());
                 }
             }
         }

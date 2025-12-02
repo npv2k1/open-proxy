@@ -9,6 +9,7 @@ A multi-threaded proxy parser and checker with support for various proxy formats
 - 📁 **Separate Output**: Save good and bad proxies to different files
 - 🔧 **Flexible Configuration**: Customizable timeout, test URL, and proxy types
 - 📝 **Multiple Proxy Types**: Support for HTTP, HTTPS, SOCKS4, and SOCKS5 proxies
+- 🌐 **Web Crawler**: Crawl and extract proxies from websites and proxy lists
 - 🖥️ **Interactive Terminal User Interface (TUI)**
 - 🧪 **Comprehensive test suite**
 - 🚀 **CI/CD with GitHub Actions**
@@ -62,6 +63,31 @@ Check proxies and separate working from non-working ones:
 
 # Check SOCKS5 proxies
 ./open-proxy check proxies.txt -t socks5 --good working_socks.txt
+```
+
+### Proxy Crawler
+
+Crawl and extract proxies from websites:
+
+```bash
+# Crawl proxies from a specific URL
+./open-proxy crawl --url https://example.com/proxy-list.txt -o proxies.txt
+
+# Crawl from multiple URLs
+./open-proxy crawl \
+  --url https://example.com/list1.txt \
+  --url https://example.com/list2.txt \
+  -o all_proxies.txt
+
+# Use built-in common proxy sources
+./open-proxy crawl --common-sources -o proxies.txt
+
+# Crawl with custom timeout and proxy type
+./open-proxy crawl \
+  --url https://example.com/socks.txt \
+  -t socks5 \
+  --timeout 60 \
+  -o socks_proxies.txt
 ```
 
 ### Supported Proxy Formats
@@ -121,6 +147,20 @@ Options:
   -h, --help                     Print help
 ```
 
+#### Crawl Command
+
+```
+Usage: open-proxy crawl [OPTIONS]
+
+Options:
+  -u, --url <URL>                URLs to crawl proxies from (can specify multiple)
+  -o, --output <OUTPUT>          Output file for crawled proxies
+  -t, --proxy-type <PROXY_TYPE>  Proxy type (http, https, socks4, socks5) [default: http]
+      --timeout <TIMEOUT>        Timeout in seconds for HTTP requests [default: 30]
+      --common-sources           Use common free proxy sources
+  -h, --help                     Print help
+```
+
 ## Project Structure
 
 ```
@@ -130,7 +170,8 @@ open-proxy/
 │   │   ├── mod.rs        # Module exports
 │   │   ├── models.rs     # Proxy data models
 │   │   ├── parser.rs     # Proxy parser
-│   │   └── checker.rs    # Multi-threaded proxy checker
+│   │   ├── checker.rs    # Multi-threaded proxy checker
+│   │   └── crawler.rs    # Web crawler for proxy extraction
 │   ├── database/         # Database layer
 │   ├── models/           # Data models
 │   ├── tui/              # Terminal UI
