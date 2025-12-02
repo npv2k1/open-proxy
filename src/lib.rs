@@ -1,13 +1,15 @@
-//! Template Rust - Todo App Example
+//! Open Proxy - Proxy Parser and Checker
 //!
-//! This is a template Rust project featuring a todo application with SQLite database
-//! and terminal user interface (TUI).
+//! This is a proxy parser and checker with multi-threading support.
+//! It can parse proxies from various formats and check their validity.
 
 pub mod database;
 pub mod models;
+pub mod proxy;
 pub mod tui;
 
 pub use models::*;
+pub use proxy::*;
 
 /// Application result type
 pub type Result<T> = anyhow::Result<T>;

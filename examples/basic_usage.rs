@@ -1,4 +1,4 @@
-use template_rust::{database::TodoDatabase, models::Todo};
+use open_proxy::{database::TodoDatabase, models::Todo};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

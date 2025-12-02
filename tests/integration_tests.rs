@@ -1,4 +1,4 @@
-use template_rust::models::Todo;
+use open_proxy::models::Todo;
 
 #[test]
 fn test_todo_creation() {
