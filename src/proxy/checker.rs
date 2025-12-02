@@ -86,7 +86,13 @@ impl ProxyChecker {
     /// Create a new proxy checker with custom configuration
     pub fn with_config(config: CheckerConfig) -> Self {
         let geo_locator = config.mmdb_path.as_ref().and_then(|path| {
-            GeoLocator::from_path(path).ok()
+            match GeoLocator::from_path(path) {
+                Ok(locator) => Some(locator),
+                Err(e) => {
+                    eprintln!("Warning: Failed to load MMDB file '{}': {}", path, e);
+                    None
+                }
+            }
         });
         
         Self { config, geo_locator }

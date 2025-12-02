@@ -105,17 +105,17 @@ impl GeoLocator {
             return Ok(GeoLocation::default());
         };
 
-        // Access country information directly (not through Option)
+        // Extract country information from nested structs
         let country_code = city.country.iso_code.map(String::from);
         let country_name = city.country.names.english.map(String::from);
         
-        // Access city name
+        // Extract city name
         let city_name = city.city.names.english.map(String::from);
         
-        // Access continent code
+        // Extract continent code
         let continent_code = city.continent.code.map(String::from);
         
-        // Access location data
+        // Extract location data
         let latitude = city.location.latitude;
         let longitude = city.location.longitude;
         let timezone = city.location.time_zone.map(String::from);

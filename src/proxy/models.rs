@@ -131,15 +131,6 @@ impl ProxyCheckResult {
         }
     }
 
-    pub fn working_with_geo(proxy: Proxy, response_time_ms: u64, geo_location: GeoLocation) -> Self {
-        Self {
-            proxy,
-            status: ProxyCheckStatus::Working,
-            response_time_ms: Some(response_time_ms),
-            geo_location: Some(geo_location),
-        }
-    }
-
     pub fn failed(proxy: Proxy, error: String) -> Self {
         Self {
             proxy,
