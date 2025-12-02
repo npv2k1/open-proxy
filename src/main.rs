@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use open_proxy::{
     database::TodoDatabase,
     models::Todo,
-    proxy::{CheckerConfig, ProxyChecker, ProxyParser, ProxyType},
+    proxy::{CheckerConfig, GeoLocator, ProxyChecker, ProxyParser, ProxyType},
     tui::App,
 };
 use std::path::PathBuf;
@@ -86,6 +86,17 @@ enum Commands {
         /// URL to test proxies against
         #[arg(long, default_value = "http://httpbin.org/ip")]
         test_url: String,
+        /// Path to MMDB file for geolocation detection (e.g., GeoLite2-City.mmdb)
+        #[arg(long)]
+        mmdb: Option<PathBuf>,
+    },
+    /// Look up geolocation for an IP address
+    GeoLookup {
+        /// IP address to look up
+        ip: String,
+        /// Path to MMDB file (e.g., GeoLite2-City.mmdb)
+        #[arg(short, long)]
+        mmdb: PathBuf,
     },
 }
 
@@ -171,6 +182,7 @@ async fn main() -> Result<()> {
             threads,
             timeout,
             test_url,
+            mmdb,
         }) => {
             let ptype = parse_proxy_type(&proxy_type)?;
             let proxies = ProxyParser::parse_file(&input, ptype)?;
@@ -178,12 +190,19 @@ async fn main() -> Result<()> {
             println!("Loaded {} proxies from {:?}", proxies.len(), input);
             println!("Checking with {} threads, timeout: {}s", threads, timeout);
             println!("Test URL: {}", test_url);
+            if let Some(ref mmdb_path) = mmdb {
+                println!("Geolocation: enabled ({})", mmdb_path.display());
+            }
             println!();
 
-            let config = CheckerConfig::new()
+            let mut config = CheckerConfig::new()
                 .with_concurrency(threads)
                 .with_timeout(Duration::from_secs(timeout))
                 .with_test_url(test_url);
+
+            if let Some(mmdb_path) = mmdb {
+                config = config.with_mmdb_path(mmdb_path.to_string_lossy().to_string());
+            }
 
             let checker = ProxyChecker::with_config(config);
             let (good_results, bad_results) = checker.check_and_separate(proxies).await;
@@ -204,13 +223,43 @@ async fn main() -> Result<()> {
                 println!("Saved {} bad proxies to {:?}", bad_proxies.len(), bad_path);
             }
 
-            // Print working proxies with response times
+            // Print working proxies with response times and location
             if !good_results.is_empty() {
                 println!("\nWorking proxies:");
                 for result in &good_results {
                     if let Some(time) = result.response_time_ms {
-                        println!("  {} ({}ms)", result.proxy.to_full_string(), time);
+                        let location_str = result.geo_location
+                            .as_ref()
+                            .map(|g| format!(" [{}]", g.short_display()))
+                            .unwrap_or_default();
+                        println!("  {} ({}ms){}", result.proxy.to_full_string(), time, location_str);
                     }
+                }
+            }
+        }
+        Some(Commands::GeoLookup { ip, mmdb }) => {
+            let geo = GeoLocator::from_path(&mmdb)?;
+            match geo.lookup(&ip) {
+                Ok(location) => {
+                    println!("Geolocation for {}:", ip);
+                    println!("  Country: {} ({})", 
+                        location.country_name.as_deref().unwrap_or("Unknown"),
+                        location.country_code.as_deref().unwrap_or("--"));
+                    if let Some(city) = &location.city_name {
+                        println!("  City: {}", city);
+                    }
+                    if let Some(continent) = &location.continent_code {
+                        println!("  Continent: {}", continent);
+                    }
+                    if let (Some(lat), Some(lon)) = (location.latitude, location.longitude) {
+                        println!("  Coordinates: {:.4}, {:.4}", lat, lon);
+                    }
+                    if let Some(tz) = &location.timezone {
+                        println!("  Timezone: {}", tz);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error looking up {}: {}", ip, e);
                 }
             }
         }
