@@ -1,5 +1,6 @@
 //! Proxy checker module for checking proxy validity
 
+use crate::proxy::geo::GeoLocator;
 use crate::proxy::models::{Proxy, ProxyCheckResult, ProxyType};
 use crate::Result;
 use futures::stream::{self, StreamExt};
@@ -26,6 +27,8 @@ pub struct CheckerConfig {
     pub concurrency: usize,
     /// URL to test proxies against
     pub test_url: String,
+    /// Path to MMDB file for geolocation (optional)
+    pub mmdb_path: Option<String>,
 }
 
 impl Default for CheckerConfig {
@@ -34,6 +37,7 @@ impl Default for CheckerConfig {
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
             concurrency: DEFAULT_CONCURRENCY,
             test_url: DEFAULT_TEST_URL.to_string(),
+            mmdb_path: None,
         }
     }
 }
@@ -57,11 +61,17 @@ impl CheckerConfig {
         self.test_url = url;
         self
     }
+
+    pub fn with_mmdb_path(mut self, path: String) -> Self {
+        self.mmdb_path = Some(path);
+        self
+    }
 }
 
 /// Proxy checker for validating proxies
 pub struct ProxyChecker {
     config: CheckerConfig,
+    geo_locator: Option<GeoLocator>,
 }
 
 impl ProxyChecker {
@@ -69,12 +79,17 @@ impl ProxyChecker {
     pub fn new() -> Self {
         Self {
             config: CheckerConfig::default(),
+            geo_locator: None,
         }
     }
 
     /// Create a new proxy checker with custom configuration
     pub fn with_config(config: CheckerConfig) -> Self {
-        Self { config }
+        let geo_locator = config.mmdb_path.as_ref().and_then(|path| {
+            GeoLocator::from_path(path).ok()
+        });
+        
+        Self { config, geo_locator }
     }
 
     /// Check a single proxy
@@ -92,7 +107,16 @@ impl ProxyChecker {
                     Ok(Ok(response)) => {
                         if response.status().is_success() {
                             let elapsed = start.elapsed().as_millis() as u64;
-                            ProxyCheckResult::working(proxy.clone(), elapsed)
+                            let mut result = ProxyCheckResult::working(proxy.clone(), elapsed);
+                            
+                            // Attempt to get geolocation if configured
+                            if let Some(ref geo) = self.geo_locator {
+                                if let Ok(location) = geo.lookup(&proxy.host) {
+                                    result = result.with_geo_location(location);
+                                }
+                            }
+                            
+                            result
                         } else {
                             ProxyCheckResult::failed(
                                 proxy.clone(),
@@ -174,6 +198,7 @@ impl Clone for ProxyChecker {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
+            geo_locator: self.geo_locator.clone(),
         }
     }
 }

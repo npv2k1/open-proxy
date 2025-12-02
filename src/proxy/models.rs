@@ -1,5 +1,6 @@
 //! Proxy data models
 
+use crate::proxy::geo::GeoLocation;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -116,6 +117,8 @@ pub struct ProxyCheckResult {
     pub proxy: Proxy,
     pub status: ProxyCheckStatus,
     pub response_time_ms: Option<u64>,
+    /// Geographic location of the proxy IP (if detected)
+    pub geo_location: Option<GeoLocation>,
 }
 
 impl ProxyCheckResult {
@@ -124,6 +127,16 @@ impl ProxyCheckResult {
             proxy,
             status: ProxyCheckStatus::Working,
             response_time_ms: Some(response_time_ms),
+            geo_location: None,
+        }
+    }
+
+    pub fn working_with_geo(proxy: Proxy, response_time_ms: u64, geo_location: GeoLocation) -> Self {
+        Self {
+            proxy,
+            status: ProxyCheckStatus::Working,
+            response_time_ms: Some(response_time_ms),
+            geo_location: Some(geo_location),
         }
     }
 
@@ -132,6 +145,7 @@ impl ProxyCheckResult {
             proxy,
             status: ProxyCheckStatus::Failed(error),
             response_time_ms: None,
+            geo_location: None,
         }
     }
 
@@ -140,11 +154,18 @@ impl ProxyCheckResult {
             proxy,
             status: ProxyCheckStatus::Timeout,
             response_time_ms: None,
+            geo_location: None,
         }
     }
 
     pub fn is_working(&self) -> bool {
         matches!(self.status, ProxyCheckStatus::Working)
+    }
+
+    /// Set the geo location for this result
+    pub fn with_geo_location(mut self, geo_location: GeoLocation) -> Self {
+        self.geo_location = Some(geo_location);
+        self
     }
 }
 

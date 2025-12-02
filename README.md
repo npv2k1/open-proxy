@@ -9,6 +9,7 @@ A multi-threaded proxy parser and checker with support for various proxy formats
 - 📁 **Separate Output**: Save good and bad proxies to different files
 - 🔧 **Flexible Configuration**: Customizable timeout, test URL, and proxy types
 - 📝 **Multiple Proxy Types**: Support for HTTP, HTTPS, SOCKS4, and SOCKS5 proxies
+- 🌍 **IP Geolocation**: Auto-detect proxy IP location using MMDB (MaxMind DB) files
 - 🖥️ **Interactive Terminal User Interface (TUI)**
 - 🧪 **Comprehensive test suite**
 - 🚀 **CI/CD with GitHub Actions**
@@ -62,7 +63,23 @@ Check proxies and separate working from non-working ones:
 
 # Check SOCKS5 proxies
 ./open-proxy check proxies.txt -t socks5 --good working_socks.txt
+
+# Check proxies with geolocation detection
+./open-proxy check proxies.txt \
+  --good good.txt \
+  --mmdb GeoLite2-City.mmdb
 ```
+
+### IP Geolocation
+
+Look up the geolocation of any IP address using an MMDB file:
+
+```bash
+# Look up IP geolocation
+./open-proxy geo-lookup 8.8.8.8 --mmdb GeoLite2-City.mmdb
+```
+
+**Note:** You need to download a GeoIP2 or GeoLite2 MMDB database file from [MaxMind](https://www.maxmind.com/). The GeoLite2 databases are free (requires registration).
 
 ### Supported Proxy Formats
 
@@ -118,7 +135,21 @@ Options:
   -n, --threads <THREADS>        Number of concurrent threads [default: 10]
       --timeout <TIMEOUT>        Timeout in seconds [default: 10]
       --test-url <TEST_URL>      URL to test proxies against [default: http://httpbin.org/ip]
+      --mmdb <MMDB>              Path to MMDB file for geolocation detection (e.g., GeoLite2-City.mmdb)
   -h, --help                     Print help
+```
+
+#### Geo-Lookup Command
+
+```
+Usage: open-proxy geo-lookup --mmdb <MMDB> <IP>
+
+Arguments:
+  <IP>  IP address to look up
+
+Options:
+  -m, --mmdb <MMDB>  Path to MMDB file (e.g., GeoLite2-City.mmdb)
+  -h, --help         Print help
 ```
 
 ## Project Structure
@@ -130,7 +161,8 @@ open-proxy/
 │   │   ├── mod.rs        # Module exports
 │   │   ├── models.rs     # Proxy data models
 │   │   ├── parser.rs     # Proxy parser
-│   │   └── checker.rs    # Multi-threaded proxy checker
+│   │   ├── checker.rs    # Multi-threaded proxy checker
+│   │   └── geo.rs        # IP geolocation using MMDB
 │   ├── database/         # Database layer
 │   ├── models/           # Data models
 │   ├── tui/              # Terminal UI
