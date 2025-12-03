@@ -101,7 +101,7 @@ impl ProxyParser {
     /// Parse ip:port or ip:port:user:pass format
     fn parse_colon_format(line: &str, default_type: ProxyType) -> Option<Proxy> {
         let parts: Vec<&str> = line.split(':').collect();
-        
+
         match parts.len() {
             2 => {
                 // IP:PORT format
@@ -115,7 +115,13 @@ impl ProxyParser {
                 let port: u16 = parts[1].parse().ok()?;
                 let username = parts[2].to_string();
                 let password = parts[3].to_string();
-                Some(Proxy::with_auth(host, port, default_type, username, password))
+                Some(Proxy::with_auth(
+                    host,
+                    port,
+                    default_type,
+                    username,
+                    password,
+                ))
             }
             _ => None,
         }
@@ -136,7 +142,11 @@ impl ProxyParser {
     }
 
     /// Save proxies to a file
-    pub fn save_to_file<P: AsRef<Path>>(proxies: &[Proxy], path: P, full_format: bool) -> Result<()> {
+    pub fn save_to_file<P: AsRef<Path>>(
+        proxies: &[Proxy],
+        path: P,
+        full_format: bool,
+    ) -> Result<()> {
         let content: String = proxies
             .iter()
             .map(|p| {
@@ -148,7 +158,7 @@ impl ProxyParser {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         fs::write(path, content)?;
         Ok(())
     }
@@ -206,7 +216,8 @@ mod tests {
 
     #[test]
     fn test_parse_url_format_with_auth() {
-        let proxy = ProxyParser::parse_line("socks5://user:pass@192.168.1.1:1080", ProxyType::Http).unwrap();
+        let proxy = ProxyParser::parse_line("socks5://user:pass@192.168.1.1:1080", ProxyType::Http)
+            .unwrap();
         assert_eq!(proxy.host, "192.168.1.1");
         assert_eq!(proxy.port, 1080);
         assert_eq!(proxy.proxy_type, ProxyType::Socks5);

@@ -79,7 +79,10 @@ impl Proxy {
             format!("{}:{}@", auth.username, auth.password)
         });
 
-        format!("{}://{}{}:{}", self.proxy_type, auth_part, self.host, self.port)
+        format!(
+            "{}://{}{}:{}",
+            self.proxy_type, auth_part, self.host, self.port
+        )
     }
 
     /// Get the proxy string in IP:PORT format
@@ -90,7 +93,10 @@ impl Proxy {
     /// Get the proxy string with auth in IP:PORT:USER:PASS format
     pub fn to_full_string(&self) -> String {
         match &self.auth {
-            Some(auth) => format!("{}:{}:{}:{}", self.host, self.port, auth.username, auth.password),
+            Some(auth) => format!(
+                "{}:{}:{}:{}",
+                self.host, self.port, auth.username, auth.password
+            ),
             None => self.to_simple_string(),
         }
     }
@@ -212,7 +218,7 @@ mod tests {
     #[test]
     fn test_proxy_check_result() {
         let proxy = Proxy::new("127.0.0.1".to_string(), 8080, ProxyType::Http);
-        
+
         let result = ProxyCheckResult::working(proxy.clone(), 100);
         assert!(result.is_working());
         assert_eq!(result.response_time_ms, Some(100));
