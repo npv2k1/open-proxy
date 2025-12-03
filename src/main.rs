@@ -92,6 +92,9 @@ enum Commands {
         /// URLs to crawl proxies from (can specify multiple)
         #[arg(short, long)]
         url: Vec<String>,
+        /// File containing list of URLs to crawl (one URL per line)
+        #[arg(short = 'f', long)]
+        url_file: Option<PathBuf>,
         /// Output file for crawled proxies
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -242,6 +245,7 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Crawl {
             url,
+            url_file,
             output,
             proxy_type,
             timeout,
@@ -275,8 +279,23 @@ async fn main() -> Result<()> {
                 }
             }
 
-            // Crawl from user-provided URLs
-            for crawl_url in &url {
+            // Read URLs from file if provided
+            let mut urls_to_crawl: Vec<String> = url.clone();
+            if let Some(file_path) = url_file {
+                println!("Reading URLs from {:?}...", file_path);
+                let content = std::fs::read_to_string(&file_path)?;
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    // Skip empty lines and comments
+                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                        urls_to_crawl.push(trimmed.to_string());
+                    }
+                }
+                println!("Loaded {} URLs from file", urls_to_crawl.len() - url.len());
+            }
+
+            // Crawl from all URLs (user-provided and from file)
+            for crawl_url in &urls_to_crawl {
                 println!("Crawling: {}", crawl_url);
                 match crawler.crawl_url(crawl_url, ptype.clone()).await {
                     Ok(proxies) => {

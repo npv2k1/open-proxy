@@ -79,6 +79,9 @@ Crawl and extract proxies from websites:
   --url https://example.com/list2.txt \
   -o all_proxies.txt
 
+# Crawl from a file containing list of URLs (one URL per line)
+./open-proxy crawl --url-file urls.txt -o proxies.txt
+
 # Use built-in common proxy sources
 ./open-proxy crawl --common-sources -o proxies.txt
 
@@ -154,6 +157,7 @@ Usage: open-proxy crawl [OPTIONS]
 
 Options:
   -u, --url <URL>                URLs to crawl proxies from (can specify multiple)
+  -f, --url-file <URL_FILE>      File containing list of URLs to crawl (one URL per line)
   -o, --output <OUTPUT>          Output file for crawled proxies
   -t, --proxy-type <PROXY_TYPE>  Proxy type (http, https, socks4, socks5) [default: http]
       --timeout <TIMEOUT>        Timeout in seconds for HTTP requests [default: 30]
