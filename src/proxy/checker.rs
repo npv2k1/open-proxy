@@ -80,7 +80,7 @@ impl ProxyChecker {
     /// Check a single proxy
     pub async fn check_proxy(&self, proxy: &Proxy) -> ProxyCheckResult {
         let start = Instant::now();
-        
+
         match self.create_client(proxy) {
             Ok(client) => {
                 match tokio::time::timeout(
@@ -100,9 +100,7 @@ impl ProxyChecker {
                             )
                         }
                     }
-                    Ok(Err(e)) => {
-                        ProxyCheckResult::failed(proxy.clone(), e.to_string())
-                    }
+                    Ok(Err(e)) => ProxyCheckResult::failed(proxy.clone(), e.to_string()),
                     Err(_) => ProxyCheckResult::timeout(proxy.clone()),
                 }
             }
@@ -122,10 +120,7 @@ impl ProxyChecker {
                     // Semaphore acquire only fails if the semaphore is closed,
                     // which won't happen here since we own the Arc and keep it alive
                     // for the duration of the check operation.
-                    let _permit = sem
-                        .acquire()
-                        .await
-                        .expect("Semaphore closed unexpectedly");
+                    let _permit = sem.acquire().await.expect("Semaphore closed unexpectedly");
                     checker.check_proxy(&proxy).await
                 }
             })
@@ -142,23 +137,19 @@ impl ProxyChecker {
         proxies: Vec<Proxy>,
     ) -> (Vec<ProxyCheckResult>, Vec<ProxyCheckResult>) {
         let results = self.check_proxies(proxies).await;
-        
+
         let (good, bad): (Vec<_>, Vec<_>) = results.into_iter().partition(|r| r.is_working());
-        
+
         (good, bad)
     }
 
     /// Create a reqwest client with the proxy
     fn create_client(&self, proxy: &Proxy) -> Result<Client> {
         let proxy_url = proxy.url();
-        
+
         let reqwest_proxy = match proxy.proxy_type {
-            ProxyType::Http | ProxyType::Https => {
-                ReqwestProxy::http(&proxy_url)?
-            }
-            ProxyType::Socks4 | ProxyType::Socks5 => {
-                ReqwestProxy::all(&proxy_url)?
-            }
+            ProxyType::Http | ProxyType::Https => ReqwestProxy::http(&proxy_url)?,
+            ProxyType::Socks4 | ProxyType::Socks5 => ReqwestProxy::all(&proxy_url)?,
         };
 
         let client = Client::builder()
