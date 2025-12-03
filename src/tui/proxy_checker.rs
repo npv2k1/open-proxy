@@ -319,7 +319,11 @@ impl ProxyCheckerApp {
             self.good_count,
             self.selected_list == 0,
             Color::Green,
-            if self.selected_list == 0 { Some(&mut self.list_state) } else { None },
+            if self.selected_list == 0 {
+                Some(&mut self.list_state)
+            } else {
+                None
+            },
         );
 
         // Render bad proxies list
@@ -331,7 +335,11 @@ impl ProxyCheckerApp {
             self.bad_count,
             self.selected_list == 1,
             Color::Red,
-            if self.selected_list == 1 { Some(&mut self.list_state) } else { None },
+            if self.selected_list == 1 {
+                Some(&mut self.list_state)
+            } else {
+                None
+            },
         );
 
         // Status bar
