@@ -14,10 +14,14 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
+use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use tokio::time::Duration;
+
+/// Maximum number of recent proxies to keep for display
+const MAX_RECENT_PROXIES: usize = 100;
 
 /// Proxy checker TUI application state
 pub struct ProxyCheckerApp {
@@ -37,10 +41,10 @@ pub struct ProxyCheckerApp {
     good_count: usize,
     /// Number of bad proxies found
     bad_count: usize,
-    /// Recent good proxies (for display)
-    recent_good: Vec<ProxyCheckResult>,
-    /// Recent bad proxies (for display)
-    recent_bad: Vec<ProxyCheckResult>,
+    /// Recent good proxies (for display, stored as VecDeque for O(1) operations)
+    recent_good: VecDeque<ProxyCheckResult>,
+    /// Recent bad proxies (for display, stored as VecDeque for O(1) operations)
+    recent_bad: VecDeque<ProxyCheckResult>,
     /// Selected list (0 = good, 1 = bad)
     selected_list: usize,
     /// Selected item in current list
@@ -74,8 +78,8 @@ impl ProxyCheckerApp {
             checked: 0,
             good_count: 0,
             bad_count: 0,
-            recent_good: Vec::new(),
-            recent_bad: Vec::new(),
+            recent_good: VecDeque::new(),
+            recent_bad: VecDeque::new(),
             selected_list: 0,
             list_state,
             status_message: "Starting proxy check... Press 'q' to quit.".to_string(),
@@ -167,10 +171,10 @@ impl ProxyCheckerApp {
                             file.flush()?;
                         }
 
-                        // Keep last 100 for display
-                        self.recent_good.push(result);
-                        if self.recent_good.len() > 100 {
-                            self.recent_good.remove(0);
+                        // Keep last MAX_RECENT_PROXIES for display using VecDeque for O(1) operations
+                        self.recent_good.push_back(result);
+                        if self.recent_good.len() > MAX_RECENT_PROXIES {
+                            self.recent_good.pop_front();
                         }
                     } else {
                         self.bad_count += 1;
@@ -181,10 +185,10 @@ impl ProxyCheckerApp {
                             file.flush()?;
                         }
 
-                        // Keep last 100 for display
-                        self.recent_bad.push(result);
-                        if self.recent_bad.len() > 100 {
-                            self.recent_bad.remove(0);
+                        // Keep last MAX_RECENT_PROXIES for display using VecDeque for O(1) operations
+                        self.recent_bad.push_back(result);
+                        if self.recent_bad.len() > MAX_RECENT_PROXIES {
+                            self.recent_bad.pop_front();
                         }
                     }
 
@@ -306,26 +310,28 @@ impl ProxyCheckerApp {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(chunks[2]);
 
-        // Good proxies list
-        self.render_proxy_list(
+        // Render good proxies list
+        Self::render_proxy_list_static(
             f,
             proxy_chunks[0],
             "✓ Good Proxies",
-            &self.recent_good.clone(),
+            &self.recent_good,
             self.good_count,
             self.selected_list == 0,
             Color::Green,
+            if self.selected_list == 0 { Some(&mut self.list_state) } else { None },
         );
 
-        // Bad proxies list
-        self.render_proxy_list(
+        // Render bad proxies list
+        Self::render_proxy_list_static(
             f,
             proxy_chunks[1],
             "✗ Bad Proxies",
-            &self.recent_bad.clone(),
+            &self.recent_bad,
             self.bad_count,
             self.selected_list == 1,
             Color::Red,
+            if self.selected_list == 1 { Some(&mut self.list_state) } else { None },
         );
 
         // Status bar
@@ -341,15 +347,15 @@ impl ProxyCheckerApp {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn render_proxy_list(
-        &mut self,
+    fn render_proxy_list_static(
         f: &mut Frame,
         area: Rect,
         title: &str,
-        results: &[ProxyCheckResult],
+        results: &VecDeque<ProxyCheckResult>,
         total_count: usize,
         is_selected: bool,
         color: Color,
+        list_state: Option<&mut ListState>,
     ) {
         let items: Vec<ListItem> = results
             .iter()
@@ -383,8 +389,8 @@ impl ProxyCheckerApp {
             .highlight_style(Style::default().bg(Color::DarkGray))
             .highlight_symbol(">> ");
 
-        if is_selected {
-            f.render_stateful_widget(list, area, &mut self.list_state);
+        if let Some(state) = list_state {
+            f.render_stateful_widget(list, area, state);
         } else {
             f.render_widget(list, area);
         }
