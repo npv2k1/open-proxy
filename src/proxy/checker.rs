@@ -6,6 +6,7 @@ use futures::stream::{self, StreamExt};
 use reqwest::{Client, Proxy as ReqwestProxy};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 
 /// Default timeout for proxy checks in seconds
@@ -80,7 +81,7 @@ impl ProxyChecker {
     /// Check a single proxy
     pub async fn check_proxy(&self, proxy: &Proxy) -> ProxyCheckResult {
         let start = Instant::now();
-        
+
         match self.create_client(proxy) {
             Ok(client) => {
                 match tokio::time::timeout(
@@ -100,9 +101,7 @@ impl ProxyChecker {
                             )
                         }
                     }
-                    Ok(Err(e)) => {
-                        ProxyCheckResult::failed(proxy.clone(), e.to_string())
-                    }
+                    Ok(Err(e)) => ProxyCheckResult::failed(proxy.clone(), e.to_string()),
                     Err(_) => ProxyCheckResult::timeout(proxy.clone()),
                 }
             }
@@ -122,10 +121,7 @@ impl ProxyChecker {
                     // Semaphore acquire only fails if the semaphore is closed,
                     // which won't happen here since we own the Arc and keep it alive
                     // for the duration of the check operation.
-                    let _permit = sem
-                        .acquire()
-                        .await
-                        .expect("Semaphore closed unexpectedly");
+                    let _permit = sem.acquire().await.expect("Semaphore closed unexpectedly");
                     checker.check_proxy(&proxy).await
                 }
             })
@@ -142,23 +138,50 @@ impl ProxyChecker {
         proxies: Vec<Proxy>,
     ) -> (Vec<ProxyCheckResult>, Vec<ProxyCheckResult>) {
         let results = self.check_proxies(proxies).await;
-        
+
         let (good, bad): (Vec<_>, Vec<_>) = results.into_iter().partition(|r| r.is_working());
-        
+
         (good, bad)
+    }
+
+    /// Check proxies with streaming results via channel
+    /// Returns a receiver that yields each result as it completes
+    pub fn check_proxies_stream(&self, proxies: Vec<Proxy>) -> mpsc::Receiver<ProxyCheckResult> {
+        let (tx, rx) = mpsc::channel(100);
+        let checker = self.clone();
+        let concurrency = self.config.concurrency;
+
+        tokio::spawn(async move {
+            let semaphore = Arc::new(Semaphore::new(concurrency));
+
+            let futures = proxies.into_iter().map(|proxy| {
+                let sem = Arc::clone(&semaphore);
+                let checker = checker.clone();
+                let tx = tx.clone();
+                async move {
+                    let _permit = sem.acquire().await.expect("Semaphore closed unexpectedly");
+                    let result = checker.check_proxy(&proxy).await;
+                    // Ignore send errors - receiver may have been dropped
+                    let _ = tx.send(result).await;
+                }
+            });
+
+            stream::iter(futures)
+                .buffer_unordered(concurrency)
+                .collect::<Vec<_>>()
+                .await;
+        });
+
+        rx
     }
 
     /// Create a reqwest client with the proxy
     fn create_client(&self, proxy: &Proxy) -> Result<Client> {
         let proxy_url = proxy.url();
-        
+
         let reqwest_proxy = match proxy.proxy_type {
-            ProxyType::Http | ProxyType::Https => {
-                ReqwestProxy::http(&proxy_url)?
-            }
-            ProxyType::Socks4 | ProxyType::Socks5 => {
-                ReqwestProxy::all(&proxy_url)?
-            }
+            ProxyType::Http | ProxyType::Https => ReqwestProxy::http(&proxy_url)?,
+            ProxyType::Socks4 | ProxyType::Socks5 => ReqwestProxy::all(&proxy_url)?,
         };
 
         let client = Client::builder()

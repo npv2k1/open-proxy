@@ -4,7 +4,7 @@ use open_proxy::{
     database::TodoDatabase,
     models::Todo,
     proxy::{CheckerConfig, ProxyChecker, ProxyParser, ProxyType},
-    tui::App,
+    tui::{App, ProxyCheckerApp},
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -87,6 +87,29 @@ enum Commands {
         #[arg(long, default_value = "http://httpbin.org/ip")]
         test_url: String,
     },
+    /// Check proxies with interactive TUI progress display
+    CheckTui {
+        /// Input file containing proxies
+        input: PathBuf,
+        /// Output file for good proxies (streamed as checked)
+        #[arg(short, long)]
+        good: Option<PathBuf>,
+        /// Output file for bad proxies (streamed as checked)
+        #[arg(short, long)]
+        bad: Option<PathBuf>,
+        /// Proxy type (http, https, socks4, socks5)
+        #[arg(short = 't', long, default_value = "http")]
+        proxy_type: String,
+        /// Number of concurrent threads
+        #[arg(short = 'n', long, default_value = "10")]
+        threads: usize,
+        /// Timeout in seconds
+        #[arg(long, default_value = "10")]
+        timeout: u64,
+        /// URL to test proxies against
+        #[arg(long, default_value = "http://httpbin.org/ip")]
+        test_url: String,
+    },
 }
 
 #[tokio::main]
@@ -151,9 +174,9 @@ async fn main() -> Result<()> {
         }) => {
             let ptype = parse_proxy_type(&proxy_type)?;
             let proxies = ProxyParser::parse_file(&input, ptype)?;
-            
+
             println!("Parsed {} proxies from {:?}", proxies.len(), input);
-            
+
             if let Some(output_path) = output {
                 ProxyParser::save_to_file(&proxies, &output_path, true)?;
                 println!("Saved parsed proxies to {:?}", output_path);
@@ -174,7 +197,7 @@ async fn main() -> Result<()> {
         }) => {
             let ptype = parse_proxy_type(&proxy_type)?;
             let proxies = ProxyParser::parse_file(&input, ptype)?;
-            
+
             println!("Loaded {} proxies from {:?}", proxies.len(), input);
             println!("Checking with {} threads, timeout: {}s", threads, timeout);
             println!("Test URL: {}", test_url);
@@ -188,13 +211,21 @@ async fn main() -> Result<()> {
             let checker = ProxyChecker::with_config(config);
             let (good_results, bad_results) = checker.check_and_separate(proxies).await;
 
-            println!("Results: {} good, {} bad", good_results.len(), bad_results.len());
+            println!(
+                "Results: {} good, {} bad",
+                good_results.len(),
+                bad_results.len()
+            );
 
             // Save good proxies
             if let Some(good_path) = good {
                 let good_proxies: Vec<_> = good_results.iter().map(|r| r.proxy.clone()).collect();
                 ProxyParser::save_to_file(&good_proxies, &good_path, true)?;
-                println!("Saved {} good proxies to {:?}", good_proxies.len(), good_path);
+                println!(
+                    "Saved {} good proxies to {:?}",
+                    good_proxies.len(),
+                    good_path
+                );
             }
 
             // Save bad proxies
@@ -213,6 +244,31 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        Some(Commands::CheckTui {
+            input,
+            good,
+            bad,
+            proxy_type,
+            threads,
+            timeout,
+            test_url,
+        }) => {
+            let ptype = parse_proxy_type(&proxy_type)?;
+            let proxies = ProxyParser::parse_file(&input, ptype)?;
+
+            if proxies.is_empty() {
+                eprintln!("No proxies found in {:?}", input);
+                return Ok(());
+            }
+
+            let config = CheckerConfig::new()
+                .with_concurrency(threads)
+                .with_timeout(Duration::from_secs(timeout))
+                .with_test_url(test_url);
+
+            let mut app = ProxyCheckerApp::new(proxies, config, good, bad);
+            app.run().await?;
         }
     }
 
